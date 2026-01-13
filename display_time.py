@@ -12,6 +12,8 @@ import time
 import sys
 import argparse
 from datetime import datetime
+import subprocess
+import shlex
 
 try:
     from waveshare_epd import epd2in8
@@ -52,6 +54,40 @@ def render_and_display(epd, time_str, date_str, font_time, font_date):
     epd.display(epd.getbuffer(image))
 
 
+def get_ip_addresses():
+    """Return a list of IP address strings. Try `ip` command first, then fallback to primary socket trick."""
+    addrs = []
+    try:
+        # Prefer `ip -o addr` which lists interfaces and addresses in a parseable form
+        out = subprocess.check_output(shlex.split("ip -o addr show"), stderr=subprocess.DEVNULL)
+        for line in out.decode().splitlines():
+            # example: '2: eth0    inet 192.168.1.10/24 brd ...'
+            parts = line.split()
+            if len(parts) >= 4 and parts[2] in ("inet", "inet6"):
+                iface = parts[1]
+                addr = parts[3].split('/')[0]
+                if addr and not addr.startswith('127.') and addr != '::1':
+                    addrs.append(f"{iface}: {addr}")
+    except Exception:
+        # Fallback: determine primary outbound IPv4 address
+        try:
+            s = __import__('socket').socket(__import__('socket').AF_INET, __import__('socket').SOCK_DGRAM)
+            s.connect(("8.8.8.8", 80))
+            ip = s.getsockname()[0]
+            s.close()
+            if ip:
+                addrs.append(f"primary: {ip}")
+        except Exception:
+            pass
+
+    # Deduplicate and limit to a few lines for display
+    seen = []
+    for a in addrs:
+        if a not in seen:
+            seen.append(a)
+    return seen[:3]
+
+
 def main():
     parser = argparse.ArgumentParser(description="Display date/time on Waveshare 2.8 e-ink")
     parser.add_argument("--interval", type=int, default=60, help="Update interval in seconds (default: 60)")
@@ -71,6 +107,7 @@ def main():
 
     font_time = load_font(args.font, args.font_size)
     font_date = load_font(args.font, max(14, args.font_size // 3))
+    font_ip = load_font(args.font, max(12, args.font_size // 4))
 
     try:
         while True:
@@ -81,7 +118,42 @@ def main():
                 time_str = now.strftime('%H:%M')
             date_str = now.strftime('%Y-%m-%d')
 
+            ips = get_ip_addresses()
             render_and_display(epd, time_str, date_str, font_time, font_date)
+
+            # Draw IPs directly after rendering the main image to keep layout simple
+            if ips:
+                try:
+                    # Recreate image and draw IP lines under the date
+                    width, height = epd.width, epd.height
+                    image = Image.new('1', (width, height), 255)
+                    draw = ImageDraw.Draw(image)
+
+                    w_time, h_time = draw.textsize(time_str, font=font_time)
+                    x_time = (width - w_time) // 2
+                    y_time = max(2, (height // 2 - h_time))
+
+                    w_date, h_date = draw.textsize(date_str, font=font_date)
+                    x_date = (width - w_date) // 2
+                    y_date = y_time + h_time + 4
+
+                    draw.text((x_time, y_time), time_str, fill=0, font=font_time)
+                    draw.text((x_date, y_date), date_str, fill=0, font=font_date)
+
+                    # IP lines
+                    y = y_date + h_date + 6
+                    for ip_line in ips:
+                        w_ip, h_ip = draw.textsize(ip_line, font=font_ip)
+                        x_ip = (width - w_ip) // 2
+                        if y + h_ip > height - 2:
+                            break
+                        draw.text((x_ip, y), ip_line, fill=0, font=font_ip)
+                        y += h_ip + 2
+
+                    epd.display(epd.getbuffer(image))
+                except Exception:
+                    # If anything fails while drawing IPs, ignore and continue
+                    pass
 
             # For e-ink, avoid very frequent full updates. Sleep until next interval.
             for _ in range(max(1, args.interval)):
