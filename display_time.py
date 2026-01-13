@@ -14,12 +14,19 @@ import argparse
 from datetime import datetime
 import subprocess
 import shlex
+import importlib
 
-try:
-    from waveshare_epd import epd2in8
-except Exception:
-    print("Error: could not import waveshare_epd. Install 'waveshare-epd' package.")
-    raise
+def get_epd_module(model_key: str):
+    """Dynamically import and return the epd driver module for a given model key.
+
+    `model_key` should be the numeric part used in Waveshare module names, e.g. '2in8' or '2in13'.
+    """
+    module_name = f"waveshare_epd.epd{model_key}"
+    try:
+        return importlib.import_module(module_name)
+    except Exception as e:
+        print(f"Error: could not import {module_name}: {e}")
+        raise
 
 from PIL import Image, ImageDraw, ImageFont
 
@@ -33,7 +40,7 @@ def load_font(path=None, size=36):
         return ImageFont.load_default()
 
 
-def render_and_display(epd, time_str, date_str, font_time, font_date):
+def render_and_display(epd, time_str, date_str, font_time, font_date, partial=False):
     width, height = epd.width, epd.height
     image = Image.new('1', (width, height), 255)  # 1: 1-bit color
     draw = ImageDraw.Draw(image)
@@ -51,7 +58,7 @@ def render_and_display(epd, time_str, date_str, font_time, font_date):
     draw.text((x_time, y_time), time_str, fill=0, font=font_time)
     draw.text((x_date, y_date), date_str, fill=0, font=font_date)
 
-    epd.display(epd.getbuffer(image))
+    display_image(epd, image, partial_requested=partial)
 
 
 def get_ip_addresses():
@@ -88,6 +95,65 @@ def get_ip_addresses():
     return seen[:3]
 
 
+def display_image(epd, image, partial_requested=False):
+    """Display an image on the epd device.
+
+    If `partial_requested` is True, attempt to call any available partial-refresh
+    method on the driver (common names tried). Falls back to full `display()`.
+    """
+    buf = None
+    try:
+        buf = epd.getbuffer(image)
+    except Exception:
+        try:
+            # Some drivers accept the raw image; try passing image directly
+            buf = image
+        except Exception:
+            buf = None
+
+    if buf is None:
+        try:
+            epd.display(epd.getbuffer(image))
+        except Exception:
+            pass
+        return
+
+    # Try common partial refresh method names
+    partial_methods = ("displayPartial", "DisplayPartial", "display_partial", "display_partial_buffer", "partial_update")
+    if partial_requested:
+        for name in partial_methods:
+            if hasattr(epd, name):
+                try:
+                    getattr(epd, name)(buf)
+                    return
+                except Exception:
+                    # If calling fails, try the next one
+                    continue
+        # If we reach here, no partial method worked — fall back to full display
+        try:
+            print("Partial refresh requested but not supported by driver; using full refresh.")
+        except Exception:
+            pass
+
+    # Default: full display
+    try:
+        if hasattr(epd, 'display'):
+            epd.display(buf)
+        else:
+            # fallback: try any callable attribute that looks like display
+            for attr in dir(epd):
+                if 'display' in attr.lower():
+                    fn = getattr(epd, attr)
+                    if callable(fn):
+                        try:
+                            fn(buf)
+                            return
+                        except Exception:
+                            continue
+    except Exception:
+        pass
+
+
 def main():
     parser = argparse.ArgumentParser(description="Display date/time on Waveshare 2.8 e-ink")
     parser.add_argument("--interval", type=int, default=60, help="Update interval in seconds (default: 60)")
@@ -95,10 +161,16 @@ def main():
     parser.add_argument("--font-size", type=int, default=48, help="Font size for time")
     parser.add_argument("--no-clear", action="store_true", help="Do not clear display on exit")
     parser.add_argument("--show-seconds", action="store_true", help="Show seconds in time display")
+    parser.add_argument("--partial-refresh", dest="partial_refresh", action="store_true",
+                        help="Use e-ink partial refresh if supported (falls back to full refresh)")
+    parser.add_argument("--model", type=str, default="2in8",
+                        choices=("2in8", "2in13"),
+                        help="Waveshare display model to use (2in8 or 2in13).")
     args = parser.parse_args()
 
     try:
-        epd = epd2in8.EPD()
+        epd_module = get_epd_module(args.model)
+        epd = epd_module.EPD()
         epd.init()
         epd.Clear(0xFF)
     except Exception as e:
@@ -119,7 +191,7 @@ def main():
             date_str = now.strftime('%Y-%m-%d')
 
             ips = get_ip_addresses()
-            render_and_display(epd, time_str, date_str, font_time, font_date)
+            render_and_display(epd, time_str, date_str, font_time, font_date, partial=args.partial_refresh)
 
             # Draw IPs directly after rendering the main image to keep layout simple
             if ips:
@@ -150,7 +222,7 @@ def main():
                         draw.text((x_ip, y), ip_line, fill=0, font=font_ip)
                         y += h_ip + 2
 
-                    epd.display(epd.getbuffer(image))
+                    display_image(epd, image, partial_requested=args.partial_refresh)
                 except Exception:
                     # If anything fails while drawing IPs, ignore and continue
                     pass

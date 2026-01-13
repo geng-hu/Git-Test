@@ -35,6 +35,14 @@ Options
 - `--show-seconds`: include seconds in the time display.
 - `--no-clear`: do not clear the display on program exit.
 
+- `--model`: select the Waveshare module driver to use (`2in8` or `2in13`). Default is `2in8`.
+
+New / notable options
+- `--partial-refresh`: attempt to use the e-ink driver's partial-refresh API when available. Falls back to a full refresh if the driver does not expose a compatible method. Use this to reduce flicker and speed up updates when your module supports partial updates.
+
+Behavior changes
+- IP addresses: the script now detects and displays local IP addresses on the screen by default (shown beneath the date). If you prefer to hide IPs, run the script inside a wrapper or request a `--no-ips` option.
+
 Systemd service example
 - Create `/etc/systemd/system/eink-time.service` with:
 
@@ -63,6 +71,9 @@ sudo systemctl enable --now eink-time.service
 Notes and caveats
 - This script performs full-screen updates. Some Waveshare modules support partial refresh; adapt to your board's API if available (e.g., `displayPartial`).
 - Test fonts and sizes locally before deploying. If `DejaVuSans` is missing, pass `--font` to use a bundled TTF.
+
+Partial refresh notes
+- Partial refresh support depends on your specific Waveshare driver variant. The script tries common partial methods (e.g. `displayPartial`, `display_partial`) and will print a short message and fall back to full refresh if none are available. If you installed a vendor driver from Waveshare, check its API for a partial-update function and report the method name if you want it added to the detection list.
 
 Troubleshooting
 - Import errors: ensure `waveshare-epd` is installed and matches your board model.
