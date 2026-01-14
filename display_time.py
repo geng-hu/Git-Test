@@ -163,7 +163,7 @@ def main():
     parser.add_argument("--show-seconds", action="store_true", help="Show seconds in time display")
     parser.add_argument("--partial-refresh", dest="partial_refresh", action="store_true",
                         help="Use e-ink partial refresh if supported (falls back to full refresh)")
-    parser.add_argument("--model", type=str, default="2in8",
+    parser.add_argument("--model", type=str, default="2in13",
                         choices=("2in8", "2in13"),
                         help="Waveshare display model to use (2in8 or 2in13).")
     args = parser.parse_args()
