@@ -21,6 +21,7 @@ pip3 install -r requirements.txt
 3. Wiring and driver
 - Connect the Waveshare 2.8" e-Paper to the Pi SPI pins and power. Follow Waveshare hardware docs for your exact HAT/board variant.
 - The script uses the `waveshare-epd` Python package (common community driver). If you installed vendor drivers from Waveshare GitHub, confirm that `epd2in8` is importable.
+- The script uses the `waveshare-epd` Python package (common community driver). This version of the script targets the `epd2in13_v4` driver; if you installed vendor drivers from Waveshare GitHub, confirm that `epd2in13_v4` is importable.
 
 Run
 
@@ -35,7 +36,7 @@ Options
 - `--show-seconds`: include seconds in the time display.
 - `--no-clear`: do not clear the display on program exit.
 
-- `--model`: select the Waveshare module driver to use (`2in8` or `2in13`). Default is `2in8`.
+- `--model`: removed — this script targets `epd2in13_v4` specifically.
 
 New / notable options
 - `--partial-refresh`: attempt to use the e-ink driver's partial-refresh API when available. Falls back to a full refresh if the driver does not expose a compatible method. Use this to reduce flicker and speed up updates when your module supports partial updates.

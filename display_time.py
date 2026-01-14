@@ -14,19 +14,9 @@ import argparse
 from datetime import datetime
 import subprocess
 import shlex
-import importlib
 
-def get_epd_module(model_key: str):
-    """Dynamically import and return the epd driver module for a given model key.
 
-    `model_key` should be the numeric part used in Waveshare module names, e.g. '2in8' or '2in13'.
-    """
-    module_name = f"waveshare_epd.epd{model_key}"
-    try:
-        return importlib.import_module(module_name)
-    except Exception as e:
-        print(f"Error: could not import {module_name}: {e}")
-        raise
+
 
 from PIL import Image, ImageDraw, ImageFont
 
@@ -163,14 +153,12 @@ def main():
     parser.add_argument("--show-seconds", action="store_true", help="Show seconds in time display")
     parser.add_argument("--partial-refresh", dest="partial_refresh", action="store_true",
                         help="Use e-ink partial refresh if supported (falls back to full refresh)")
-    parser.add_argument("--model", type=str, default="2in13",
-                        choices=("2in8", "2in13"),
-                        help="Waveshare display model to use (2in8 or 2in13).")
+    # --model removed; this script targets epd2in13_v4 specifically
     args = parser.parse_args()
 
     try:
-        epd_module = get_epd_module(args.model)
-        epd = epd_module.EPD()
+        from waveshare_epd import epd2in13_v4
+        epd = epd2in13_v4.EPD()
         epd.init()
         epd.Clear(0xFF)
     except Exception as e:
